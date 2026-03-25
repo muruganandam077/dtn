@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+websockets
+sqlalchemy
+vaderSentiment
+pydantic
+requests
+python-dateutil
