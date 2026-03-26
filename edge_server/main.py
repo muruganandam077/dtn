@@ -6,17 +6,37 @@ from typing import List
 import uvicorn
 import uuid
 import asyncio
+import os
+import logging
 from pydantic import BaseModel
 from dateutil.parser import parse
+from pyngrok import ngrok
+from dotenv import load_dotenv
 
 from database import engine, SessionLocal, init_db, get_db
 from models import Base, MessageModel
 from ai_priority import get_message_priority
 from dtn_sync import sync_with_peer
 
+load_dotenv()
+logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    
+    port = int(os.getenv("PORT", 8000))
+    ngrok_token = os.getenv("NGROK_AUTHTOKEN")
+    
+    if ngrok_token:
+        ngrok.set_auth_token(ngrok_token)
+        public_url = ngrok.connect(port).public_url
+        logger.info(f"==================================================")
+        logger.info(f"🚀 ngrok tunnel established: {public_url}")
+        logger.info(f"==================================================")
+    else:
+        logger.info("No NGROK_AUTHTOKEN found in .env. Running locally only.")
+        
     yield
 
 app = FastAPI(lifespan=lifespan, title="DTN Edge Server")
@@ -103,7 +123,7 @@ def get_messages(db: Session = Depends(get_db)):
     return msgs
 
 @app.post("/api/sync")
-def receive_sync(messages: List[dict], db: Session = Depends(get_db)):
+async def receive_sync(messages: List[dict], db: Session = Depends(get_db)):
     saved_count = 0
     new_records = []
     for msg_data in messages:
@@ -127,22 +147,36 @@ def receive_sync(messages: List[dict], db: Session = Depends(get_db)):
         
     # Broadcast to connected clients so UI updates instantly
     for msg in new_records:
-        asyncio.create_task(manager.broadcast({
+        await manager.broadcast({
             "id": msg.id,
             "content": msg.content,
             "sender_id": msg.sender_id,
             "receiver_id": msg.receiver_id,
             "timestamp": str(msg.timestamp),
             "priority": msg.priority,
-        }))
+        })
 
     local_messages = db.query(MessageModel).all()
-    return local_messages
+    return [
+        {
+            "id": m.id,
+            "content": m.content,
+            "sender_id": m.sender_id,
+            "receiver_id": m.receiver_id,
+            "timestamp": str(m.timestamp),
+            "priority": m.priority,
+        } for m in local_messages
+    ]
 
 @app.post("/api/trigger_sync")
 async def trigger_sync(req: SyncRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     result = sync_with_peer(req.peer_url, db)
-    return result
+    
+    if result.get("new_messages"):
+        for msg in result.get("new_messages", []):
+            await manager.broadcast(msg)
+            
+    return {"status": result["status"], "synced_records": result["synced_records"]}
 
 if __name__ == "__main__":
     import os

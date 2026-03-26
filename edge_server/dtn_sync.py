@@ -43,6 +43,7 @@ def sync_with_peer(peer_url: str, db: Session):
         
         peer_messages = response.json()
         saved_count = 0
+        new_records = []
         
         # Step 3: Save missing messages locally
         for msg_data in peer_messages:
@@ -58,6 +59,14 @@ def sync_with_peer(peer_url: str, db: Session):
                     is_synced=True
                 )
                 db.add(new_msg)
+                new_records.append({
+                    "id": new_msg.id,
+                    "content": new_msg.content,
+                    "sender_id": new_msg.sender_id,
+                    "receiver_id": new_msg.receiver_id,
+                    "timestamp": str(new_msg.timestamp),
+                    "priority": new_msg.priority
+                })
                 saved_count += 1
                 
         if saved_count > 0:
@@ -66,7 +75,7 @@ def sync_with_peer(peer_url: str, db: Session):
         else:
             logger.info("No new messages from peer")
             
-        return {"status": "success", "synced_records": saved_count}
+        return {"status": "success", "synced_records": saved_count, "new_messages": new_records}
         
     except Exception as e:
         logger.error(f"Sync failed with {peer_url}: {str(e)}")

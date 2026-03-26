@@ -6,24 +6,27 @@ import { Send, Wifi, WifiOff, RefreshCcw } from 'lucide-react';
 function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
-  const [serverIp, setServerIp] = useState(window.location.hostname);
-  const [userId] = useState(() => localStorage.getItem('userId') || `User_${Math.floor(Math.random()*1000)}`);
+  const [serverIp, setServerIp] = useState(() => localStorage.getItem('serverIp') || window.location.hostname);
+  const [serverPort, setServerPort] = useState(() => Number(localStorage.getItem('serverPort')) || 8001);
+  const [userId] = useState(() => localStorage.getItem('userId') || `User_${Math.floor(Math.random() * 1000)}`);
   const [isConnected, setIsConnected] = useState(false);
   const apiRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('userId', userId);
+    localStorage.setItem('serverIp', serverIp);
+    localStorage.setItem('serverPort', serverPort);
     loadLocalMessages();
-  }, [userId]);
+  }, [userId, serverIp, serverPort]);
 
   useEffect(() => {
-    // We recreate API when ServerIP changes
+    // We recreate API when ServerIP or Port changes
     if (apiRef.current) {
-        if (apiRef.current.ws) apiRef.current.ws.close();
-        if (apiRef.current.reconnectTimer) clearTimeout(apiRef.current.reconnectTimer);
+      if (apiRef.current.ws) apiRef.current.ws.close();
+      if (apiRef.current.reconnectTimer) clearTimeout(apiRef.current.reconnectTimer);
     }
-    
-    apiRef.current = new ApiService(serverIp, 8000, async (msg) => {
+
+    apiRef.current = new ApiService(serverIp, serverPort, async (msg) => {
       // On new message via websocket
       const isNew = await saveMessageLocal(msg);
       if (isNew) {
@@ -32,7 +35,7 @@ function App() {
           const _msgs = prev.filter(p => p.id !== msg.id);
           _msgs.push(msg);
           _msgs.sort((a, b) => {
-            if (a.priority !== b.priority) return (b.priority||1) - (a.priority||1);
+            if (a.priority !== b.priority) return (b.priority || 1) - (a.priority || 1);
             return new Date(b.timestamp) - new Date(a.timestamp);
           });
           return _msgs;
@@ -48,7 +51,7 @@ function App() {
         apiRef.current = null;
       }
     };
-  }, [serverIp]);
+  }, [serverIp, serverPort]);
 
   const loadLocalMessages = async () => {
     const msgs = await getLocalMessages();
@@ -61,12 +64,12 @@ function App() {
 
     const newMsg = await createLocalMessage(input, userId);
     setMessages(prev => {
-        const _msgs = [newMsg, ...prev];
-        _msgs.sort((a,b) => {
-            if (a.priority !== b.priority) return (b.priority||1) - (a.priority||1);
-            return new Date(b.timestamp) - new Date(a.timestamp);
-        });
-        return _msgs;
+      const _msgs = [newMsg, ...prev];
+      _msgs.sort((a, b) => {
+        if (a.priority !== b.priority) return (b.priority || 1) - (a.priority || 1);
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+      return _msgs;
     });
     setInput('');
 
@@ -100,7 +103,7 @@ function App() {
         </div>
         <div className="flex flex-col items-end">
           <div className="flex items-center gap-2 bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-            {isConnected ? <Wifi size={14} className="text-green-300"/> : <WifiOff size={14} className="text-red-300"/>}
+            {isConnected ? <Wifi size={14} className="text-green-300" /> : <WifiOff size={14} className="text-red-300" />}
             <span className="text-[10px] font-medium uppercase tracking-wider">{isConnected ? 'Online' : 'Offline'}</span>
           </div>
           <button onClick={manualSyncHttp} className="flex items-center gap-1 text-[10px] uppercase font-bold text-white/70 hover:text-white mt-2 transition">
@@ -111,13 +114,21 @@ function App() {
 
       {/* Connection Info Bar */}
       <div className="bg-slate-100 p-2 text-xs flex justify-between items-center px-4 border-b">
-        <span className="font-semibold text-slate-600">Edge Node IP:</span>
-        <input 
-          type="text" 
-          value={serverIp} 
-          onChange={(e) => setServerIp(e.target.value)}
-          className="bg-white border-2 border-slate-200 rounded-md px-3 py-1.5 ml-2 text-right w-36 font-mono focus:border-blue-500 focus:ring-0 outline-none transition"
-        />
+        <span className="font-semibold text-slate-600">Edge Node:</span>
+        <div className="flex gap-1">
+          <input
+            type="text"
+            value={serverIp}
+            onChange={(e) => setServerIp(e.target.value)}
+            className="bg-white border-2 border-slate-200 rounded-md px-2 py-1 text-right w-28 font-mono focus:border-blue-500 focus:ring-0 outline-none transition"
+          />
+          <input
+            type="number"
+            value={serverPort}
+            onChange={(e) => setServerPort(Number(e.target.value))}
+            className="bg-white border-2 border-slate-200 rounded-md px-2 py-1 text-right w-16 font-mono focus:border-blue-500 focus:ring-0 outline-none transition"
+          />
+        </div>
       </div>
 
       {/* Messages */}
@@ -142,7 +153,7 @@ function App() {
                 </div>
                 <div className="text-[14px] leading-relaxed break-words">{msg.content}</div>
                 <div className="text-[10px] text-right mt-2 font-medium opacity-60 flex justify-end items-center gap-1">
-                  {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   {msg.is_local && !msg.is_synced && isMine && <span className="ml-1 opacity-100 animate-pulse text-[12px]">⏳</span>}
                 </div>
               </div>
@@ -160,14 +171,14 @@ function App() {
 
       {/* Input */}
       <form onSubmit={handleSend} className="p-4 bg-white border-t border-slate-200 flex gap-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
-        <input 
-          type="text" 
+        <input
+          type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="New message..."
           className="flex-1 bg-slate-100 placeholder:text-slate-400 text-slate-700 rounded-full px-5 py-3 outline-none focus:ring-2 focus:ring-blue-500 transition shadow-inner"
         />
-        <button 
+        <button
           type="submit"
           disabled={!input.trim()}
           className="bg-blue-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-full p-3 hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 transition active:translate-y-0 disabled:hover:translate-y-0 disabled:hover:shadow-none"
