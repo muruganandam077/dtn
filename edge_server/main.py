@@ -37,6 +37,24 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("No NGROK_AUTHTOKEN found in .env. Running locally only.")
         
+    peer_url = os.getenv("AUTO_SYNC_PEER_URL")
+    if peer_url:
+        async def auto_sync_task():
+            while True:
+                await asyncio.sleep(5)
+                try:
+                    db = SessionLocal()
+                    result = sync_with_peer(peer_url, db)
+                    if result.get("new_messages"):
+                        for msg in result.get("new_messages", []):
+                            await manager.broadcast(msg)
+                    db.close()
+                except Exception as e:
+                    logger.error(f"Auto-sync failed: {e}")
+        
+        asyncio.create_task(auto_sync_task())
+        logger.info(f"🔄 Auto-sync enabled for peer: {peer_url}")
+        
     yield
 
 app = FastAPI(lifespan=lifespan, title="DTN Edge Server")
@@ -89,6 +107,8 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
             content = data.get("content", "")
             sender_id = data.get("sender_id", "Unknown")
             receiver_id = data.get("receiver_id", None)
+            latitude = data.get("latitude", None)
+            longitude = data.get("longitude", None)
             
             # Deduplicate just in case
             existing = db.query(MessageModel).filter(MessageModel.id == msg_id).first()
@@ -99,7 +119,9 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
                     content=content,
                     sender_id=sender_id,
                     receiver_id=receiver_id,
-                    priority=priority
+                    priority=priority,
+                    latitude=latitude,
+                    longitude=longitude
                 )
                 db.add(new_msg)
                 db.commit()
@@ -112,6 +134,8 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
                     "receiver_id": new_msg.receiver_id,
                     "timestamp": str(new_msg.timestamp),
                     "priority": new_msg.priority,
+                    "latitude": new_msg.latitude,
+                    "longitude": new_msg.longitude
                 })
             
     except WebSocketDisconnect:
@@ -136,7 +160,9 @@ async def receive_sync(messages: List[dict], db: Session = Depends(get_db)):
                 receiver_id=msg_data.get("receiver_id"),
                 timestamp=parse(msg_data["timestamp"]),
                 priority=msg_data.get("priority", 1),
-                is_synced=True
+                is_synced=True,
+                latitude=msg_data.get("latitude"),
+                longitude=msg_data.get("longitude")
             )
             db.add(new_msg)
             saved_count += 1
@@ -154,6 +180,8 @@ async def receive_sync(messages: List[dict], db: Session = Depends(get_db)):
             "receiver_id": msg.receiver_id,
             "timestamp": str(msg.timestamp),
             "priority": msg.priority,
+            "latitude": msg.latitude,
+            "longitude": msg.longitude
         })
 
     local_messages = db.query(MessageModel).all()
@@ -165,6 +193,8 @@ async def receive_sync(messages: List[dict], db: Session = Depends(get_db)):
             "receiver_id": m.receiver_id,
             "timestamp": str(m.timestamp),
             "priority": m.priority,
+            "latitude": m.latitude,
+            "longitude": m.longitude
         } for m in local_messages
     ]
 

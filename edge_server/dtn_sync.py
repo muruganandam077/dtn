@@ -33,7 +33,9 @@ def sync_with_peer(peer_url: str, db: Session):
                 "receiver_id": m.receiver_id,
                 "timestamp": str(m.timestamp),
                 "priority": m.priority,
-                "is_synced": True
+                "is_synced": True,
+                "latitude": m.latitude,
+                "longitude": m.longitude
             } for m in local_messages
         ]
         
@@ -56,7 +58,9 @@ def sync_with_peer(peer_url: str, db: Session):
                     receiver_id=msg_data.get("receiver_id"),
                     timestamp=parse(msg_data["timestamp"]),
                     priority=msg_data.get("priority", 1),
-                    is_synced=True
+                    is_synced=True,
+                    latitude=msg_data.get("latitude"),
+                    longitude=msg_data.get("longitude")
                 )
                 db.add(new_msg)
                 new_records.append({
@@ -65,7 +69,9 @@ def sync_with_peer(peer_url: str, db: Session):
                     "sender_id": new_msg.sender_id,
                     "receiver_id": new_msg.receiver_id,
                     "timestamp": str(new_msg.timestamp),
-                    "priority": new_msg.priority
+                    "priority": new_msg.priority,
+                    "latitude": new_msg.latitude,
+                    "longitude": new_msg.longitude
                 })
                 saved_count += 1
                 

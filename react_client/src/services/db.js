@@ -30,7 +30,7 @@ export const getLocalMessages = async () => {
   return messages;
 };
 
-export const createLocalMessage = async (content, senderId) => {
+export const createLocalMessage = async (content, senderId, latitude = null, longitude = null) => {
   const msg = {
     id: uuidv4(),
     content,
@@ -39,7 +39,9 @@ export const createLocalMessage = async (content, senderId) => {
     timestamp: new Date().toISOString(),
     priority: 1, // Server AI will prioritize and update later
     is_synced: false,
-    is_local: true
+    is_local: true,
+    latitude,
+    longitude
   };
   await localforage.setItem(msg.id, msg);
   return msg;
